@@ -569,7 +569,7 @@ class PX4MavlinkBackend(Backend):
 
         # Wait for the connection to be established
         if self._connection is None:
-            return 
+            return
 
         carb.log_warn("Waiting for first hearbeat")
         result = self._connection.wait_heartbeat(blocking=False)
@@ -585,6 +585,12 @@ class PX4MavlinkBackend(Backend):
         Args:
             dt (float): The time elapsed between the previous and current function calls (s).
         """
+
+        # If the simulation has been stopped or the mavlink connection has been torn down, there is
+        # nothing to do. The omni.physx step callbacks keep firing during the stop/restart transition,
+        # so guard against a closed connection to avoid dereferencing None (e.g. recv_match) below.
+        if not self._is_running or self._connection is None:
+            return
 
         # Check for the first hearbeat on the first few iterations
         if not self._received_first_hearbeat:

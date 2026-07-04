@@ -3,6 +3,9 @@ _build/
 .DS_Store
 **/.vscode/ipch
 
+# Claude Code local settings
+.claude/
+
 # C++
 **/cmake-build*/
 **/build*/

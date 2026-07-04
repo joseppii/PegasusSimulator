@@ -6,8 +6,7 @@
 """
 
 import numpy as np
-
-from omni.isaac.dynamic_control import _dynamic_control
+from scipy.spatial.transform import Rotation
 
 # The vehicle interface
 from pegasus.simulator.logic.vehicles.vehicle import Vehicle
@@ -105,9 +104,6 @@ class Multirotor(Vehicle):
             dt (float): The time elapsed between the previous and current function calls (s).
         """
 
-        # Get the articulation root of the vehicle
-        articulation = self.get_dc_interface().get_articulation(self._stage_prefix)
-
         # Get the desired angular velocities for each rotor from the first backend (can be mavlink or other) expressed in rad/s
         if len(self._backends) != 0:
             desired_rotor_velocities = self._backends[0].input_reference()
@@ -127,7 +123,7 @@ class Multirotor(Vehicle):
             self.apply_force([0.0, 0.0, forces_z[i]], body_part="/rotor" + str(i))
 
             # Generate the rotating propeller visual effect
-            self.handle_propeller_visual(i, forces_z[i], articulation)
+            self.handle_propeller_visual(i, forces_z[i])
 
         # Apply the torque to the body frame of the vehicle that corresponds to the rolling moment
         self.apply_torque([0.0, 0.0, rolling_moment], "/body")
@@ -140,29 +136,38 @@ class Multirotor(Vehicle):
         for backend in self._backends:
             backend.update(dt)
 
-    def handle_propeller_visual(self, rotor_number, force: float, articulation):
+    def handle_propeller_visual(self, rotor_number, force: float):
         """
-        Auxiliar method used to set the joint velocity of each rotor (for animation purposes) based on the 
+        Auxiliar method used to set the joint velocity of each rotor (for animation purposes) based on the
         amount of force being applied on each joint
 
         Args:
             rotor_number (int): The number of the rotor to generate the rotation animation
             force (float): The force that is being applied on that rotor
-            articulation (_type_): The articulation group the joints of the rotors belong to
         """
 
-        # Rotate the joint to yield the visual of a rotor spinning (for animation purposes only)
-        joint = self.get_dc_interface().find_articulation_dof(articulation, "joint" + str(rotor_number))
+        # The articulation must be initialized before its joints can be driven. In Isaac Sim 6.0 this
+        # only happens once the physics simulation view exists; skip the visual until it is ready
+        # (otherwise the articulation API just warns "Articulation needs to be initialized" every step).
+        if not self._ensure_articulation_initialized():
+            return
+
+        # Get the index of the rotor joint within the vehicle's articulation (the vehicle is itself an
+        # articulation, since it inherits from Robot -> SingleArticulation)
+        joint_index = self.get_dof_index("joint" + str(rotor_number))
 
         # Spinning when armed but not applying force
         if 0.0 < force < 0.1:
-            self.get_dc_interface().set_dof_velocity(joint, 5 * self._thrusters.rot_dir[rotor_number])
+            target_velocity = 5 * self._thrusters.rot_dir[rotor_number]
         # Spinning when armed and applying force
         elif 0.1 <= force:
-            self.get_dc_interface().set_dof_velocity(joint, 100 * self._thrusters.rot_dir[rotor_number])
+            target_velocity = 100 * self._thrusters.rot_dir[rotor_number]
         # Not spinning
         else:
-            self.get_dc_interface().set_dof_velocity(joint, 0)
+            target_velocity = 0.0
+
+        # Rotate the joint to yield the visual of a rotor spinning (for animation purposes only)
+        self.set_joint_velocities(np.array([target_velocity]), joint_indices=np.array([joint_index]))
 
     def force_and_torques_to_velocities(self, force: float, torque: np.ndarray):
         """
@@ -180,24 +185,31 @@ class Multirotor(Vehicle):
             list: A list of angular velocities [rad/s] to apply in reach rotor to accomplish suchs forces and torques
         """
 
-        # Get the body frame of the vehicle
-        rb = self.get_dc_interface().get_rigid_body(self._stage_prefix + "/body")
+        # Get the body frame rigid body view of the vehicle and its world pose
+        body = self.get_rigid_body("/body")
+        body_position, body_orientation = body.get_world_poses()
+        body_position = body_position[0]
 
-        # Get the rotors of the vehicle
-        rotors = [self.get_dc_interface().get_rigid_body(self._stage_prefix + "/rotor" + str(i)) for i in range(self._thrusters._num_rotors)]
+        # Convert the body orientation (scalar-first quaternion [w, x, y, z]) into a scipy rotation
+        body_quat = body_orientation[0]
+        body_rotation = Rotation.from_quat([body_quat[1], body_quat[2], body_quat[3], body_quat[0]])
 
         # Get the relative position of the rotors with respect to the body frame of the vehicle (ignoring the orientation for now)
-        relative_poses = self.get_dc_interface().get_relative_body_poses(rb, rotors)
+        relative_poses = []
+        for i in range(self._thrusters._num_rotors):
+            rotor = self.get_rigid_body("/rotor" + str(i))
+            rotor_position, _ = rotor.get_world_poses()
+            relative_poses.append(body_rotation.inv().apply(rotor_position[0] - body_position))
 
         # Define the alocation matrix
         aloc_matrix = np.zeros((4, self._thrusters._num_rotors))
-        
+
         # Define the first line of the matrix (T [N])
-        aloc_matrix[0, :] = np.array(self._thrusters._rotor_constant)                                           
+        aloc_matrix[0, :] = np.array(self._thrusters._rotor_constant)
 
         # Define the second and third lines of the matrix (\tau_x [Nm] and \tau_y [Nm])
-        aloc_matrix[1, :] = np.array([relative_poses[i].p[1] * self._thrusters._rotor_constant[i] for i in range(self._thrusters._num_rotors)])
-        aloc_matrix[2, :] = np.array([-relative_poses[i].p[0] * self._thrusters._rotor_constant[i] for i in range(self._thrusters._num_rotors)])
+        aloc_matrix[1, :] = np.array([relative_poses[i][1] * self._thrusters._rotor_constant[i] for i in range(self._thrusters._num_rotors)])
+        aloc_matrix[2, :] = np.array([-relative_poses[i][0] * self._thrusters._rotor_constant[i] for i in range(self._thrusters._num_rotors)])
 
         # Define the forth line of the matrix (\tau_z [Nm])
         aloc_matrix[3, :] = np.array([self._thrusters._rolling_moment_coefficient[i] * self._thrusters._rot_dir[i] for i in range(self._thrusters._num_rotors)])

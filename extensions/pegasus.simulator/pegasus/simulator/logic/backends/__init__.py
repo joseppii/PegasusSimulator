@@ -7,9 +7,11 @@ from .backend import Backend, BackendConfig
 from .px4_mavlink_backend import PX4MavlinkBackend, PX4MavlinkBackendConfig
 from .ardupilot_mavlink_backend import ArduPilotMavlinkBackend, ArduPilotMavlinkBackendConfig
 
-# Check if the ROS2 package is installed
+# Try to make the ROS2 backend available. This requires both a working ROS2 install (sourced before
+# launching Isaac Sim) and the Isaac Sim ROS2 bridge. Log the real import error instead of swallowing
+# it, since "ROS2 not available" is often caused by an Isaac Sim API change rather than a missing ROS2.
 try:
     from .ros2_backend import ROS2Backend
-except:
-    import carb
-    carb.log_warn("ROS2 package not installed. ROS2Backend will not be available")
+except Exception as e:
+    import carb, traceback
+    carb.log_warn(f"ROS2Backend will not be available — import failed: {e!r}\n{traceback.format_exc()}")

@@ -20,7 +20,7 @@ simulation_app = SimulationApp({"headless": False})
 # The actual script should start here
 # -----------------------------------
 import omni.timeline
-from omni.isaac.core.world import World
+from isaacsim.core.api.world import World
 
 from isaacsim.core.utils.extensions import enable_extension
 enable_extension("isaacsim.ros2.bridge")

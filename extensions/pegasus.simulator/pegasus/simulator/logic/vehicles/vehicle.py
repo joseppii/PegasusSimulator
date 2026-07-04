@@ -10,15 +10,16 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 # Low level APIs
-import carb
 from pxr import Usd, Gf
 
 # High level Isaac sim APIs
 import omni.usd
+import omni.physx
 from isaacsim.core.utils.prims import define_prim, get_prim_at_path
 from omni.usd import get_stage_next_free_path
 from isaacsim.core.api.robots.robot import Robot
-from omni.isaac.dynamic_control import _dynamic_control
+from isaacsim.core.prims import RigidPrim
+from isaacsim.core.simulation_manager import SimulationManager
 
 # Extension APIs
 from pegasus.simulator.logic.state import State
@@ -94,7 +95,10 @@ class Vehicle(Robot):
             articulation_controller=None,
         )
 
-        self._vehicle_dc_interface = None
+        # Lazily-created cache of RigidPrim views (one per body part), used to read the rigid body
+        # state (pose/velocities) and to apply forces/torques. These replace the dynamic_control
+        # interface that was removed in Isaac Sim 6.0.
+        self._rigid_bodies = {}
 
         # Add this object for the world to track, so that if we clear the world, this object is deleted from memory and
         # as a consequence, from the VehicleManager as well
@@ -107,12 +111,16 @@ class Vehicle(Robot):
         # Variable that will hold the current state of the vehicle
         self._state = State()
 
+        # Holds the carb subscriptions for the per-physics-step callbacks (see _add_physics_callback)
+        self._physics_step_subs = {}
+
         # Add a callback to the physics engine to update the current state of the system
-        self._world.add_physics_callback(self._stage_prefix + "/state", self.update_state)
+        self._add_physics_callback(self._stage_prefix + "/state", self.update_state)
 
         # Add the update method to the physics callback if the world was received
-        # so that we can apply forces and torques to the vehicle. Note, this method should        # be implemented in classes that inherit the vehicle object
-        self._world.add_physics_callback(self._stage_prefix + "/update", self.update)
+        # so that we can apply forces and torques to the vehicle. Note, this method should
+        # be implemented in classes that inherit the vehicle object
+        self._add_physics_callback(self._stage_prefix + "/update", self.update)
 
         # Set the flag that signals if the simulation is running or not
         self._sim_running = False
@@ -130,7 +138,7 @@ class Vehicle(Robot):
 
         # Add callbacks to the physics engine to update each sensor at every timestep
         # and let the sensor decide depending on its internal update rate whether to generate new data
-        self._world.add_physics_callback(self._stage_prefix + "/Sensors", self.update_sensors)
+        self._add_physics_callback(self._stage_prefix + "/Sensors", self.update_sensors)
 
         # --------------------------------------------------------------------
         # -------------------- Add the graphical sensors to the vehicle ------
@@ -162,14 +170,51 @@ class Vehicle(Robot):
             backend.initialize(self)
 
         # Add a callbacks for the
-        self._world.add_physics_callback(self._stage_prefix + "/mav_state", self.update_sim_state)
+        self._add_physics_callback(self._stage_prefix + "/mav_state", self.update_sim_state)
 
+
+    def _add_physics_callback(self, callback_name: str, callback_fn):
+        """Register a callback that runs on every physics step.
+
+        Isaac Sim 6.0 note: ``World.add_physics_callback`` subscribes to the tensor-API step events
+        (``omni.physics.tensors``), which only fire on explicit ``world.step()`` calls (standalone
+        apps) and NOT during GUI continuous play. Subscribing to the ``omni.physx`` step events
+        instead fires on every physics step in both the standalone and GUI flows.
+
+        Args:
+            callback_name (str): A unique name identifying the callback.
+            callback_fn (Callable[[float], None]): Function called with the step size (s) each step.
+        """
+        self._physics_step_subs[callback_name] = omni.physx.get_physx_interface().subscribe_physics_step_events(
+            callback_fn
+        )
+
+    def _ensure_articulation_initialized(self) -> bool:
+        """Initialize the vehicle articulation once the physics simulation view exists.
+
+        Isaac Sim 6.0 no longer auto-initializes the articulation when GUI Play starts (the physics
+        simulation view is created lazily during warmup, after the first step callbacks fire). Calling
+        ``initialize()`` before the view exists would dereference a None view, so we defer until it is
+        available. ``initialize()`` is idempotent (it only (re)creates the handle when invalid, and the
+        handle is invalidated on timeline stop), so it is safe to call on every physics step.
+
+        Returns:
+            bool: True if the articulation is initialized and ready to use, False if not yet available.
+        """
+        if SimulationManager.get_physics_sim_view() is None:
+            return False
+        self.initialize()
+        return True
 
     def __del__(self):
         """
-        Method that is invoked when a vehicle object gets destroyed. When this happens, we also invoke the 
+        Method that is invoked when a vehicle object gets destroyed. When this happens, we also invoke the
         'remove_vehicle' from the VehicleManager in order to remove the vehicle from the list of active vehicles.
         """
+
+        # Release the physics-step subscriptions (dropping the carb subscriptions unsubscribes them)
+        if hasattr(self, "_physics_step_subs"):
+            self._physics_step_subs.clear()
 
         # Remove this object from the vehicleHandler
         VehicleManager.get_vehicle_manager().remove_vehicle(self._stage_prefix)
@@ -230,8 +275,9 @@ class Vehicle(Robot):
         if self._world.is_stopped() and self._sim_running == True:
             self._sim_running = False
 
-            # Reset the DC interface
-            self._vehicle_dc_interface = None
+            # Drop the cached rigid body views, since their physics handles become invalid once
+            # the simulation is stopped. They will be lazily recreated when the simulation restarts.
+            self._rigid_bodies = {}
 
             # Stop the sensors
             for sensor in self._sensors:
@@ -258,11 +304,18 @@ class Vehicle(Robot):
             body_part (str): . Defaults to "/body".
         """
 
-        # Get the handle of the rigidbody that we will apply the force to
-        rb = self.get_dc_interface().get_rigid_body(self._stage_prefix + body_part)
+        # Get the rigid body view of the body part that we will apply the force to
+        rb = self.get_rigid_body(body_part)
 
-        # Apply the force to the rigidbody. The force should be expressed in the rigidbody frame
-        self.get_dc_interface().apply_body_force(rb, carb._carb.Float3(force), carb._carb.Float3(pos), False)
+        # The physics simulation view may not exist yet during the first warmup step; skip until ready.
+        if rb is None:
+            return
+
+        # Apply the force to the rigidbody. The force and the application point are both expressed in
+        # the rigidbody (local) frame, hence is_global=False.
+        rb.apply_forces_and_torques_at_pos(
+            forces=np.array([force]), positions=np.array([pos]), is_global=False
+        )
 
     def apply_torque(self, torque, body_part="/body"):
         """
@@ -273,11 +326,16 @@ class Vehicle(Robot):
             body_part (str): . Defaults to "/body".
         """
 
-        # Get the handle of the rigidbody that we will apply a torque to
-        rb = self.get_dc_interface().get_rigid_body(self._stage_prefix + body_part)
+        # Get the rigid body view of the body part that we will apply a torque to
+        rb = self.get_rigid_body(body_part)
 
-        # Apply the torque to the rigidbody. The torque should be expressed in the rigidbody frame
-        self.get_dc_interface().apply_body_torque(rb, carb._carb.Float3(torque), False)
+        # The physics simulation view may not exist yet during the first warmup step; skip until ready.
+        if rb is None:
+            return
+
+        # Apply the torque to the rigidbody. The torque is expressed in the rigidbody (local) frame,
+        # hence is_global=False.
+        rb.apply_forces_and_torques_at_pos(torques=np.array([torque]), is_global=False)
 
     def update_state(self, dt: float):
         """
@@ -288,11 +346,16 @@ class Vehicle(Robot):
             dt (float): The time elapsed between the previous and current function calls (s).
         """
 
-        # Get the body frame interface of the vehicle (this will be the frame used to get the position, orientation, etc.)
-        body = self.get_dc_interface().get_rigid_body(self._stage_prefix + "/body")
+        # Get the body frame rigid body view of the vehicle (this will be the frame used to get the position, orientation, etc.)
+        body = self.get_rigid_body("/body")
 
-        # Get the current position and orientation in the inertial frame
-        pose = self.get_dc_interface().get_rigid_body_pose(body)
+        # During the first physics warmup step the simulation view may not exist yet, so the rigid body
+        # cannot be initialized. Skip updating the state until the physics view becomes available.
+        if body is None:
+            return
+
+        # Get the current position in the inertial frame (the view holds a single prim, so take index 0)
+        body_position, _ = body.get_world_poses()
 
         # Get the attitude according to the convention [w, x, y, z]
         prim = self._world.stage.GetPrimAtPath(self._stage_prefix + "/body")
@@ -300,18 +363,18 @@ class Vehicle(Robot):
         rotation_quat_real = rotation_quat.GetReal()
         rotation_quat_img = rotation_quat.GetImaginary()
 
-        # Get the angular velocity of the vehicle expressed in the body frame of reference
-        ang_vel = self.get_dc_interface().get_rigid_body_angular_velocity(body)
+        # Get the angular velocity of the vehicle expressed in the inertial frame of reference
+        ang_vel = body.get_angular_velocities()[0]
 
         # The linear velocity [x_dot, y_dot, z_dot] of the vehicle's body frame expressed in the inertial frame of reference
-        linear_vel = self.get_dc_interface().get_rigid_body_linear_velocity(body)
+        linear_vel = body.get_linear_velocities()[0]
 
         # Get the linear acceleration of the body relative to the inertial frame, expressed in the inertial frame
         # Note: we must do this approximation, since the Isaac sim does not output the acceleration of the rigid body directly
         linear_acceleration = (np.array(linear_vel) - self._state.linear_velocity) / dt
 
         # Update the state variable X = [x,y,z]
-        self._state.position = np.array(pose.p)
+        self._state.position = np.array(body_position[0])
 
         # Get the quaternion according in the [qx,qy,qz,qw] standard
         self._state.attitude = np.array(
@@ -405,9 +468,38 @@ class Vehicle(Robot):
         for backend in self._backends:
             backend.update_state(self._state)
 
-    def get_dc_interface(self):
+    def get_rigid_body(self, body_part="/body"):
+        """
+        Returns a (lazily created and cached) RigidPrim view for the given body part of the vehicle.
+        This replaces the dynamic_control rigid body handles that were removed in Isaac Sim 6.0.
 
-        if self._vehicle_dc_interface is None:
-            self._vehicle_dc_interface = _dynamic_control.acquire_dynamic_control_interface()
+        Args:
+            body_part (str): The body part of the vehicle to get the rigid body view for, relative to
+                the vehicle stage prefix (e.g. "/body" or "/rotor0"). Defaults to "/body".
 
-        return self._vehicle_dc_interface
+        Returns:
+            RigidPrim: A single-prim RigidPrim view of the requested body part.
+        """
+
+        if body_part not in self._rigid_bodies:
+
+            # In Isaac Sim 6.0 the physics simulation view is created lazily during physics warmup,
+            # *after* the first physics-step callbacks fire (see SimulationManager.initialize_physics).
+            # If we initialize a RigidPrim before the view exists, RigidPrim._on_physics_ready
+            # dereferences a None simulation view and raises. Defer until the view is available; the
+            # caller treats a None return as "physics not ready yet" and skips this step.
+            if SimulationManager.get_physics_sim_view() is None:
+                return None
+
+            prim_path = self._stage_prefix + body_part
+
+            # Create a RigidPrim view for this single body part. We do not reset the xform properties,
+            # as we only want to read state from and apply forces to the existing rigid body.
+            rigid_body = RigidPrim(prim_paths_expr=prim_path, name=prim_path, reset_xform_properties=False)
+
+            # The physics simulation view now exists, so create the underlying physics tensor handles.
+            rigid_body.initialize()
+
+            self._rigid_bodies[body_part] = rigid_body
+
+        return self._rigid_bodies[body_part]

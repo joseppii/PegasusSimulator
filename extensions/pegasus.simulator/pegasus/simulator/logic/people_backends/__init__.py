@@ -5,9 +5,9 @@
 
 from .people_backend import PeopleBackend
 
-# Check if the ROS2 package is installed
+# Try to make the ROS2 people backend available. Log the real import error instead of swallowing it.
 try:
-    from .ros2_people_backend_backend import ROS2PeopleBackend
-except:
-    import carb
-    carb.log_warn("ROS2 package not installed. ROS2PeopleBackend will not be available")
+    from .ros2_people_backend import ROS2PeopleBackend
+except Exception as e:
+    import carb, traceback
+    carb.log_warn(f"ROS2PeopleBackend will not be available — import failed: {e!r}\n{traceback.format_exc()}")

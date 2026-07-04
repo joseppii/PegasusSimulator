@@ -10,7 +10,7 @@ from isaacsim.core.utils import stage
 import omni.graph.core as og
 from isaacsim.core.utils.prims import is_prim_path_valid
 from isaacsim.core.utils.prims import set_targets
-from omni.isaac.sensor import Camera
+from isaacsim.sensors.camera import Camera
 
 from pegasus.simulator.logic.graphs import Graph
 from pegasus.simulator.logic.vehicles import Vehicle

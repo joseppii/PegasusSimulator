@@ -15,11 +15,12 @@ from pxr import Sdf
 # High level Isaac sim APIs
 import NavSchema
 import omni.client
+import omni.physx
 from isaacsim.core.utils import prims
 from omni.usd import get_stage_next_free_path
 from isaacsim.storage.native import get_assets_root_path
 
-from omni.isaac.core import SimulationContext
+from isaacsim.core.api import SimulationContext
 
 # New imports from the replicator API
 import omni.anim.graph.core as ag
@@ -119,18 +120,38 @@ class Person:
         if self._backend:
             self._backend.initialize(self)
 
+        # Holds the carb subscriptions for the per-physics-step callbacks (see _add_physics_callback)
+        self._physics_step_subs = {}
+
         # Add a callback to the physics engine to update the current state of the person
-        self._world.add_physics_callback(self._stage_prefix + "/state", self.update_state)
+        self._add_physics_callback(self._stage_prefix + "/state", self.update_state)
 
         # Add the update method to the physics callback if the world was received
         # so that we can apply the new references to be tracked by the person
-        self._world.add_physics_callback(self._stage_prefix + "/update", self.update)
+        self._add_physics_callback(self._stage_prefix + "/update", self.update)
 
         # Set the flag that signals if the simulation is running or not
         self._sim_running = False
 
         # Add a callback to start/stop of the simulation once the play/stop button is hit
         self._world.add_timeline_callback(self._stage_prefix + "/start_stop_sim", self.sim_start_stop)
+
+    def _add_physics_callback(self, callback_name: str, callback_fn):
+        """Register a callback that runs on every physics step.
+
+        Isaac Sim 6.0 note: ``World.add_physics_callback`` subscribes to the tensor-API step events,
+        which only fire on explicit ``world.step()`` calls (standalone apps) and NOT during GUI
+        continuous play. Subscribing to the ``omni.physx`` step events instead fires on every physics
+        step in both flows. The carb subscriptions are kept in ``self._physics_step_subs`` and released
+        when the person object is garbage collected.
+
+        Args:
+            callback_name (str): A unique name identifying the callback.
+            callback_fn (Callable[[float], None]): Function called with the step size (s) each step.
+        """
+        self._physics_step_subs[callback_name] = omni.physx.get_physx_interface().subscribe_physics_step_events(
+            callback_fn
+        )
 
     @property
     def state(self):
