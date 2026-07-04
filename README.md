@@ -6,6 +6,8 @@
 ![Ubuntu 22.04](https://img.shields.io/badge/Ubuntu-22.04LTS-brightgreen.svg)
 [![](https://dcbadge.limes.pink/api/server/[INVITE](https://discord.gg/AjCxw2QUmt?style=flat))](https://discord.gg/AjCxw2QUmt)
 
+> **Note:** This is a community-maintained fork of the original [Pegasus Simulator](https://github.com/PegasusSimulator/PegasusSimulator) created by [Marcelo Jacinto](https://github.com/MarceloJacinto), updated to run on Isaac Sim 6.0.1. All credit for the original framework goes to the upstream authors; this fork is distributed under the same BSD-3-Clause license (see [`LICENSE`](LICENSE)).
+
 **Pegasus Simulator** is a framework built on top of [NVIDIA Omniverse](https://docs.omniverse.nvidia.com/) and [IsaacSim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/overview.html). It is designed to provide an easy yet powerful way of simulating the dynamics of vehicles. It provides a simulation interface for [PX4](https://px4.io/) and [ArduPilot](https://ardupilot.org/) integration, as well as a custom python control interface. At the moment, only multirotor vehicles are supported, with support for other vehicle topologies planned for future versions.
 
 <p align = "center">
@@ -24,6 +26,7 @@ This was done to simplify the launching of Isaac Sim from the terminal with ROS2
 
 Please refer to the updated documentation for more details.
 
+* **2026-07-04**: (community fork) Ported to Isaac Sim 6.0.1 (Kit 110.1). Migrated the `omni.isaac.*` APIs to the `isaacsim.*` namespaces and replaced the removed `dynamic_control` interface with `RigidPrim`/`SimulationManager`.
 * **2025-10-26**: Pegasus Simulator v5.1.0 is released for Isaac 5.1.0. This version is **NOT** compatible with older versions of Isaac Sim. The Ardupilot experimental interface was not tested in this version. This update had an initial open-source contribution from [Victor Kallenbach](https://github.com/HO4X).
 * **2025-10-25**: Pegasus Simulator v4.5.1 is released for Isaac 4.5.0. This version is **NOT** compatible with older versions of Isaac Sim. The Ardupilot experimental interface was fixed and improved by [Seunghwan Jo](https://github.com/SwiftGust) and [Tomer Tiplitsky](https://github.com/TomerTip).
 * **2025-07-20**: Pegasus Simulator v4.5.0 is released for Isaac 4.5.0. This version is **NOT** compatible with older versions of Isaac Sim. The Ardupilot experimental interface was not tested in this version.
