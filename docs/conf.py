@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath("../extensions/pegasus.simulator/pegasus/simu
 project = "Pegasus Simulator"
 copyright = "2023, Marcelo Jacinto"
 author = "Marcelo Jacinto"
-version = "4.5.0"
+version = "6.0.1"
 
 # -- General configuration ---------------------------------------------------
 

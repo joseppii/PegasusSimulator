@@ -4,22 +4,22 @@ Installation
 Installing NVIDIA Isaac Sim
 ---------------------------
 
-.. image:: https://img.shields.io/badge/IsaacSim-5.1.0-brightgreen.svg
+.. image:: https://img.shields.io/badge/IsaacSim-6.0.1-brightgreen.svg
    :target: https://developer.nvidia.com/isaac-sim
-   :alt: IsaacSim 5.1.0
+   :alt: IsaacSim 6.0.1
 
-.. image:: https://img.shields.io/badge/PX4--Autopilot-1.14.3-brightgreen.svg
+.. image:: https://img.shields.io/badge/PX4--Autopilot-1.16.0-brightgreen.svg
    :target: https://github.com/PX4/PX4-Autopilot
-   :alt: PX4-Autopilot 1.14.3
+   :alt: PX4-Autopilot 1.16.0
 
 .. image:: https://img.shields.io/badge/Ubuntu-22.04LTS-brightgreen.svg
    :target: https://releases.ubuntu.com/22.04/
    :alt: Ubuntu 22.04
 
 .. note::
-	We have tested Pegasus Simulator with Isaac Sim 5.1.0 release on Ubuntu 22.04LTS with NVIDIA driver 550.163.01. The PX4-Autopilot used during development was v.14.3. Older versions Ubuntu and PX4-Autopilot were not tested. This extension was not tested on Windows. 
+	We have tested Pegasus Simulator with Isaac Sim 6.0.1 release (built on Kit 110.1) on Ubuntu 22.04LTS. The PX4-Autopilot used during development was v1.16.0. Older versions of Ubuntu and PX4-Autopilot were not tested. This extension was not tested on Windows.
 
-In order to install Isaac Sim on linux, download the zip file containing the `Workstation Installation here <https://download.isaacsim.omniverse.nvidia.com/isaac-sim-standalone-5.1.0-linux-x86_64.zip>`__ or run the following lines on the terminal:
+In order to install Isaac Sim on linux, download the zip file containing the `Workstation Installation here <https://downloads.isaacsim.nvidia.com/isaac-sim-standalone-6.0.1-linux-x86_64.zip>`__ or run the following lines on the terminal:
 
 .. code:: bash
 
@@ -31,20 +31,21 @@ In order to install Isaac Sim on linux, download the zip file containing the `Wo
     cd isaacsim
 
     # Download the zip file containing the Isaac Sim installation
-    wget https://download.isaacsim.omniverse.nvidia.com/isaac-sim-standalone-5.1.0-linux-x86_64.zip
+    wget https://downloads.isaacsim.nvidia.com/isaac-sim-standalone-6.0.1-linux-x86_64.zip
 
     # Unzip the file
-    unzip isaac-sim-standalone-5.1.0-linux-x86_64.zip
+    unzip isaac-sim-standalone-6.0.1-linux-x86_64.zip
 
-    # Run the post-installation scripts
+    # Run the post-installation script
     ./post_install.sh
-    ./isaac-sim.selector.sh
+    # (Optional) verify that your GPU and driver are compatible with Isaac Sim
+    ./isaac-sim.compatibility_check.sh
 
     # Delete the zip file
-    rm isaac-sim-standalone-5.1.0-linux-x86_64.zip
+    rm isaac-sim-standalone-6.0.1-linux-x86_64.zip
 
 
-The short video with the installation guide for Pegasus Simulator is also available `here <https://youtu.be/YCp5E8nazag>`__, but the Isaac Sim install method presented is no longer available. You should follow the instructions above to install Isaac Sim 5.1.0. **See video from 1:25 min onwards for the installation of Pegasus Simulator.**
+The short video with the installation guide for Pegasus Simulator is also available `here <https://youtu.be/YCp5E8nazag>`__, but the Isaac Sim install method presented is no longer available. You should follow the instructions above to install Isaac Sim 6.0.1. **See video from 1:25 min onwards for the installation of Pegasus Simulator.**
 
     ..  youtube:: YCp5E8nazag
         :width: 100%
@@ -61,7 +62,7 @@ from python scripts. As such, we recommend setting up a few custom environment v
 
 .. note::
     Although it is possible to setup a virtual environment following the 
-    instructions `here <https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_python.html>`__, this
+    instructions `here <https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/install_python.html>`__, this
     feature was not tested.
 
 Start by locating the **Isaac Sim installation** by navigating to Isaac Sim's root folder. Typically, in Linux, this folder can be found under ``${HOME}/isaac_sim``.
@@ -99,7 +100,7 @@ Add the following lines to your ``~/.bashrc`` or ``~/.zshrc`` file.
         # -------------------------
         # === CLEAN ENVIRONMENT ===
         # -------------------------
-        # Unset ROS 2 environment variables to avoid conflicts with Isaac's Python 3.11
+        # Unset ROS 2 environment variables to avoid conflicts with Isaac's Python 3.12
         unset ROS_VERSION ROS_PYTHON_VERSION ROS_DISTRO AMENT_PREFIX_PATH COLCON_PREFIX_PATH PYTHONPATH CMAKE_PREFIX_PATH
         
         # Remove ROS 2 paths from LD_LIBRARY_PATH if present
@@ -302,7 +303,7 @@ To install PX4-Autopilot, follow the following steps:
         # Option 2: With SSH (you need to setup a github account with ssh keys)
         git clone git@github.com:PX4/PX4-Autopilot.git
 
-3. Checkout to the stable version 1.14.3 and compile the code for software-in-the-loop (SITL) mode:
+3. Checkout to the stable version 1.16.0 and compile the code for software-in-the-loop (SITL) mode:
 
     .. code:: bash
         
@@ -310,7 +311,7 @@ To install PX4-Autopilot, follow the following steps:
         cd PX4-Autopilot
 
         # Checkout to the latest stable release
-        git checkout v1.14.3
+        git checkout v1.16.0
 
         # Initiate all the submodules. Note this will download modules such as SITL-gazebo which we do not need
         # but this is the safest way to make sure that the PX4-Autopilot and its submodules are all checked out in 

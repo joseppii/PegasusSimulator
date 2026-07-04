@@ -3,6 +3,16 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [6.0.1] - 2026-07-04
+
+### Changed
+- Ported the extension to Isaac Sim 6.0.1 (built on Kit 110.1). Migrated the `omni.isaac.*` imports to the `isaacsim.*` namespaces and replaced the removed `dynamic_control` interface with `RigidPrim` / `SimulationManager` for reading vehicle state and applying forces and torques.
+- Rotor visuals are now driven through the vehicle articulation (`get_dof_index` / `set_joint_velocities`).
+- Physics callbacks are registered on the `omni.physx` step events so that they fire during GUI play as well as standalone runs.
+- Fixed the ROS 2 `read_camera_info` import (moved to `isaacsim.ros2.core`).
+- Tested with PX4-Autopilot v1.16.0.
+
+
 ## [1.0.0] - 2023-02-17
 - Initial version of Pegasus Simulator extension
 
