@@ -3,7 +3,7 @@
 ![IsaacSim 6.0.1](https://img.shields.io/badge/IsaacSim-6.0.1-brightgreen.svg)
 ![PX4-Autopilot 1.16.0](https://img.shields.io/badge/PX4--Autopilot-1.16.0-brightgreen.svg)
 ![ArduPilot-Copter 4.4](https://img.shields.io/badge/ArduPilot--Copter-4.4.0-brightgreen.svg)
-![Ubuntu 22.04](https://img.shields.io/badge/Ubuntu-22.04LTS-brightgreen.svg)
+![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04LTS-brightgreen.svg)
 [![](https://dcbadge.limes.pink/api/server/[INVITE](https://discord.gg/AjCxw2QUmt?style=flat))](https://discord.gg/AjCxw2QUmt)
 
 > **Note:** This is a community-maintained fork of the original [Pegasus Simulator](https://github.com/PegasusSimulator/PegasusSimulator) created by [Marcelo Jacinto](https://github.com/MarceloJacinto), updated to run on Isaac Sim 6.0.1. All credit for the original framework goes to the upstream authors; this fork is distributed under the same BSD-3-Clause license (see [`LICENSE`](LICENSE)).
