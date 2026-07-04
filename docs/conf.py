@@ -127,6 +127,7 @@ autodoc_mock_imports = [
     "prettytable",
     "pyyaml",
     "pymavlink",
+    "psutil",
     "rclpy",
     "std_msgs",
     "sensor_msgs",
